@@ -290,13 +290,14 @@ export default function AdminPage() {
 
     setLoadingLeads(true)
     try {
-      const { data: leadsData, error } = await supabase
-        .from("collected_leads")
-        .select("*")
-        .or("email.neq.000,phone.neq.000")
-        .order("created_at", { ascending: false })
+      const response = await fetch("/api/admin/leads")
+      const result = await response.json()
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to fetch leads")
+      }
+
+      const leadsData = result.data || []
 
       // Process leads to remove duplicates
       const uniqueLeads = leadsData.reduce((acc: Lead[], lead: Lead) => {
@@ -355,22 +356,21 @@ export default function AdminPage() {
 
     setLoadingAllUsers(true)
     try {
-      // Fetch all users from credentials table
-      const { data, error } = await supabase
-        .from("credentials")
-        .select("created_at, chatbot_id, selected_plan, chatbot_status, chatbot_name, payment_status, chat_limit")
-        .order("created_at", { ascending: false })
+      const response = await fetch("/api/admin/users")
+      const result = await response.json()
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to fetch users")
+      }
 
-      const userData = data || []
+      const userData = result.data || []
 
       if (isMountedRef.current) {
         setAllUsers(userData)
         setUsers(userData) // Set users to all users for now
 
         // Calculate active customers from real data
-        const activeCount = userData.filter((user) => user.chatbot_status === "active").length
+        const activeCount = userData.filter((user: UserData) => user.chatbot_status === "active").length
         setActiveCustomers(activeCount)
 
         // Initialize filtered users if no search is active
@@ -401,21 +401,23 @@ export default function AdminPage() {
 
     setLoadingTokenUsage(true)
     try {
-      const { data, error } = await supabase
-        .from("chat_tokens")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(1000)
+      const response = await fetch("/api/admin/token-usage")
+      const result = await response.json()
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to fetch token usage")
+      }
 
-      const tokenData = data || []
+      const tokenData = result.data || []
 
       if (isMountedRef.current) {
         setTokenUsage(tokenData)
 
         // Calculate total tokens used from real data
-        const totalTokens = tokenData.reduce((sum, token) => sum + token.input_tokens + token.output_tokens, 0)
+        const totalTokens = tokenData.reduce(
+          (sum: number, token: TokenUsage) => sum + token.input_tokens + token.output_tokens,
+          0,
+        )
         setTotalTokensUsed(totalTokens)
 
         // Initialize filtered token usage if no search is active
@@ -444,15 +446,14 @@ export default function AdminPage() {
 
     setLoadingCustomerStats(true)
     try {
-      // Get all customers with their creation dates
-      const { data: allCustomersData, error: allError } = await supabase
-        .from("credentials")
-        .select("created_at")
-        .order("created_at", { ascending: false })
+      const response = await fetch("/api/admin/customer-stats")
+      const result = await response.json()
 
-      if (allError) throw allError
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to fetch customer stats")
+      }
 
-      const allCustomers = allCustomersData || []
+      const allCustomers = result.data || []
       const totalCount = allCustomers.length
 
       if (isMountedRef.current) {
@@ -470,7 +471,7 @@ export default function AdminPage() {
         let last10Count = 0
         let last30Count = 0
 
-        allCustomers.forEach((customer) => {
+        allCustomers.forEach((customer: { created_at: string }) => {
           const createdAt = new Date(customer.created_at)
 
           if (createdAt >= todayStart) {
@@ -577,13 +578,17 @@ export default function AdminPage() {
         .fill(0)
         .map(() => Array(24).fill(0))
 
-      // Get all users with their creation timestamps
-      const { data, error } = await supabase.from("credentials").select("created_at")
+      const response = await fetch("/api/admin/customer-stats")
+      const result = await response.json()
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to fetch customer data for heatmap")
+      }
+
+      const data = result.data || []
 
       // Process each user's creation timestamp
-      data.forEach((user) => {
+      data.forEach((user: { created_at: string }) => {
         const date = new Date(user.created_at)
         const dayOfWeek = date.getDay() // 0 = Sunday, 6 = Saturday
         const hour = date.getHours()
