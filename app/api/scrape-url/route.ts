@@ -2,28 +2,28 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import * as cheerio from "cheerio"
 
-// Initialize Supabase client for server-side operations
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error("Missing Supabase environment variables for server-side operations.")
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
 // Helper function to resolve relative URLs to absolute URLs
 function resolveUrl(baseUrl: string, relativeUrl: string): string {
   try {
     return new URL(relativeUrl, baseUrl).href
   } catch (e) {
     console.warn(`Could not resolve URL: ${relativeUrl} with base ${baseUrl}`, e)
-    return relativeUrl // Return original if resolution fails
+    return relativeUrl
   }
 }
 
 export async function POST(req: Request) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Missing Supabase environment variables")
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
     const { url } = await req.json()
 
     if (!url) {
@@ -32,10 +32,8 @@ export async function POST(req: Request) {
 
     let response: Response
     try {
-      // Fetch the raw HTML content of the website
-      // Set a reasonable timeout for the fetch request
       response = await fetch(url, {
-        signal: AbortSignal.timeout(15000), // 15 seconds timeout
+        signal: AbortSignal.timeout(15000),
       })
     } catch (fetchError: any) {
       console.error(`Network error fetching ${url}:`, fetchError)
@@ -62,7 +60,6 @@ export async function POST(req: Request) {
 
     const html = await response.text()
 
-    // 2. Scrape data using cheerio from the raw HTML
     const $ = cheerio.load(html)
 
     const title = $("title").text() || $("meta[property='og:title']").attr("content") || "No Title Found"
@@ -93,12 +90,9 @@ export async function POST(req: Request) {
       }
     })
 
-    // Improved text content extraction
     let mainText = ""
-    // Remove script and style tags to clean up text content
     $("script, style, noscript, header, footer, nav, aside").remove()
 
-    // Prioritize main content areas
     const contentSelectors = "main, article, .main-content, .content, body"
     $(contentSelectors).each((_, element) => {
       $(element)
@@ -106,13 +100,13 @@ export async function POST(req: Request) {
         .each((_, textElement) => {
           const text = $(textElement).text().trim()
           if (text.length > 10) {
-            mainText += text + "\n\n" // Add double newline for paragraph separation
+            mainText += text + "\n\n"
           }
         })
     })
 
-    mainText = mainText.replace(/\s+/g, " ").trim() // Normalize whitespace
-    const MAX_TEXT_LENGTH = 10000 // Increased limit for more content
+    mainText = mainText.replace(/\s+/g, " ").trim()
+    const MAX_TEXT_LENGTH = 10000
     if (mainText.length > MAX_TEXT_LENGTH) {
       mainText = mainText.substring(0, MAX_TEXT_LENGTH) + "..."
     } else if (mainText.length === 0) {
@@ -121,14 +115,13 @@ export async function POST(req: Request) {
 
     const images: { src: string; alt: string }[] = []
     $("img").each((_, element) => {
-      const src = $(element).attr("src") || $(element).attr("data-src") // Also check data-src for lazy loading
+      const src = $(element).attr("src") || $(element).attr("data-src")
       const alt = $(element).attr("alt") || ""
       if (src) {
         images.push({ src: resolveUrl(url, src), alt })
       }
     })
 
-    // JSON-LD structured data (if present in initial HTML)
     const structuredData: any[] = []
     $('script[type="application/ld+json"]').each((_, element) => {
       try {
@@ -153,13 +146,12 @@ export async function POST(req: Request) {
       structuredData,
     }
 
-    // 3. Save to Supabase using upsert (insert or update if URL exists)
     const { data, error: dbError } = await supabase.from("scraped_websites").upsert(
       {
         url: url,
-        scraped_data: scrapedData, // This now contains more detailed data
+        scraped_data: scrapedData,
       },
-      { onConflict: "url" }, // Specify 'url' as the conflict target for upsert
+      { onConflict: "url" },
     )
 
     if (dbError) {
