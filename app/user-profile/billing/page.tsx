@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/use-toast"
 import ChatbotHeader from "@/app/components/chatbot-header"
 import { Footer } from "@/app/components/footer"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { loadRazorpayScript, RAZORPAY_KEY_ID, generateOrderId } from "@/app/utils/razorpay"
+import { loadRazorpayScript, getRazorpayKey, generateOrderId } from "@/app/utils/razorpay"
 import { logAuditEvent } from "@/app/utils/audit-logger" // Import the audit logger
 
 // Initialize Supabase client
@@ -206,12 +206,14 @@ export default function BillingPage() {
         }
       }
 
+      const razorpayKey = await getRazorpayKey()
+
       // Create order
       const orderId = await generateOrderId(selectedPlan.price)
 
       // Configure Razorpay options
       const options = {
-        key: RAZORPAY_KEY_ID,
+        key: razorpayKey,
         amount: selectedPlan.price * 100, // in paise
         currency: "INR",
         name: "Bot247",

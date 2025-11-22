@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Footer } from "@/app/components/footer"
 import { createClient } from "@supabase/supabase-js"
-import { loadRazorpayScript, RAZORPAY_KEY_ID, generateOrderId } from "@/app/utils/razorpay"
+import { loadRazorpayScript, getRazorpayKey, generateOrderId } from "@/app/utils/razorpay"
 
 // Updated Supabase client initialization
 const supabase = createClient(
@@ -163,12 +163,14 @@ export default function SelectPlanPage() {
         }
       }
 
+      const razorpayKey = await getRazorpayKey()
+
       // Create order
       const orderId = await generateOrderId(amount)
 
       // Configure Razorpay options
       const options = {
-        key: RAZORPAY_KEY_ID,
+        key: razorpayKey,
         amount: amount * 100, // in paise
         currency: "INR",
         name: "Bot247",

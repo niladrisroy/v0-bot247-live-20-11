@@ -1,7 +1,20 @@
 "use client"
 
-// Use environment variables for API keys
-export const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_rJ93pnYKHvgyml"
+// Helper to fetch the key from the server
+export const getRazorpayKey = async (): Promise<string> => {
+  try {
+    const response = await fetch("/api/get-razorpay-key")
+    if (!response.ok) {
+      throw new Error("Failed to fetch Razorpay key")
+    }
+    const data = await response.json()
+    return data.key
+  } catch (error) {
+    console.error("Error fetching Razorpay key:", error)
+    // Fallback for dev/test if API fails
+    return "rzp_test_rJ93pnYKHvgyml"
+  }
+}
 
 // Load Razorpay script
 export const loadRazorpayScript = (): Promise<boolean> => {

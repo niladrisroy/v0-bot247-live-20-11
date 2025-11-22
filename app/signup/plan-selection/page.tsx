@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Footer } from "@/app/components/footer"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { createClient } from "@supabase/supabase-js"
-import { loadRazorpayScript, RAZORPAY_KEY_ID, generateOrderId } from "@/app/utils/razorpay"
+import { loadRazorpayScript, getRazorpayKey, generateOrderId } from "@/app/utils/razorpay"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 // Initialize Supabase client
@@ -137,12 +137,14 @@ export default function PlanSelectionPage() {
         }
       }
 
+      const razorpayKey = await getRazorpayKey()
+
       // Create order
       const orderId = await generateOrderId(amount)
 
       // Configure Razorpay options
       const options = {
-        key: RAZORPAY_KEY_ID,
+        key: razorpayKey,
         amount: amount * 100, // in paise
         currency: "INR",
         name: "Bot247",
