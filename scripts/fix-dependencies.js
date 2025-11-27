@@ -1,3 +1,8 @@
+// This script was attempting to install @napi-rs/simple-git which fails
+// The unrs-resolver package works fine without this workaround
+
+// Original code commented out - kept for reference if needed later
+/*
 // This script fixes the unrs-resolver dependency issue
 console.log("Running dependency fix script...")
 
@@ -33,3 +38,7 @@ try {
   // Don't fail the build if the fix script has an error
   process.exit(0)
 }
+*/
+
+console.log("Postinstall script skipped")
+process.exit(0)
