@@ -6,10 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { createClient } from "@supabase/supabase-js"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import ChatbotHeader from "@/app/components/chatbot-header"
 import ChatbotSidebar from "@/app/components/chatbot-sidebar"
 import { useChatbotTheme } from "@/app/contexts/chatbot-theme-context"
 import { cn } from "@/lib/utils"
+import { exportToJSON, exportToCSV, exportToTXT, exportAllConversationsToJSON } from "@/app/utils/conversation-export"
 
 // Updated Supabase client initialization
 const supabase = createClient(
@@ -229,6 +232,116 @@ export default function ConversationsPage() {
     }
   }
 
+  const handleExportCurrentDate = (format: "json" | "csv" | "txt") => {
+    if (!conversationsForDate) return
+
+    const filename = `${chatbotName}-conversations-${conversationsForDate.date}-${new Date().getTime()}`
+
+    switch (format) {
+      case "json":
+        exportToJSON(conversationsForDate, chatbotName, `${filename}.json`)
+        break
+      case "csv":
+        exportToCSV(conversationsForDate, chatbotName, `${filename}.csv`)
+        break
+      case "txt":
+        exportToTXT(conversationsForDate, chatbotName, `${filename}.txt`)
+        break
+    }
+  }
+
+  const handleExportAllDates = async (format: "json" | "csv" | "txt") => {
+    if (!chatbotId || conversations.length === 0) return
+
+    try {
+      setLoading(true)
+      // Fetch all conversations for all dates
+      const allConvsByDate: Array<{
+        date: string
+        conversations: { id: string; created_at: string; messages: Message[] }[]
+      }> = []
+
+      for (const conv of conversations) {
+        const result = await fetchConversationsForDate(conv.date_of_convo)
+        if (conversationsForDate && conversationsForDate.date === conv.date_of_convo) {
+          allConvsByDate.push({
+            date: conv.date_of_convo,
+            conversations: conversationsForDate.conversations,
+          })
+        }
+      }
+
+      const filename = `${chatbotName}-all-conversations-${new Date().toISOString().split("T")[0]}`
+
+      if (format === "json") {
+        exportAllConversationsToJSON(allConvsByDate, chatbotName, `${filename}.json`)
+      } else {
+        // For CSV and TXT, combine all dates
+        let content = ""
+        if (format === "csv") {
+          content = "Chatbot,Export Date,Total Dates\n"
+          content += `"${chatbotName}","${new Date().toISOString()}","${allConvsByDate.length}"\n\n`
+          content += "Date,Conversation ID,Timestamp,Message Role,Message Content\n"
+
+          allConvsByDate.forEach((dateGroup) => {
+            dateGroup.conversations.forEach((conv) => {
+              conv.messages.forEach((msg, index) => {
+                const conversationId = index === 0 ? conv.id : ""
+                const timestamp = index === 0 ? conv.created_at : ""
+                const date = index === 0 ? dateGroup.date : ""
+                const escapedContent = `"${msg.content.replace(/"/g, '""')}"` // Escape quotes for CSV
+                content += `"${date}","${conversationId}","${timestamp}","${msg.role}",${escapedContent}\n`
+              })
+            })
+          })
+        } else {
+          // TXT format
+          content = "═".repeat(80) + "\n"
+          content += `ALL CONVERSATIONS EXPORT - ${chatbotName}\n`
+          content += `Export Date: ${new Date().toLocaleString()}\n`
+          content += `Total Dates: ${allConvsByDate.length}\n`
+          content += "═".repeat(80) + "\n\n"
+
+          allConvsByDate.forEach((dateGroup, dateIndex) => {
+            content += `╔═ Date ${dateIndex + 1}: ${new Date(dateGroup.date).toLocaleDateString()} ══════════════════════╗\n`
+            content += `║ Total Conversations: ${dateGroup.conversations.length}\n`
+            content += `╚═══════════════════════════════════════════════════════════════════╝\n\n`
+
+            dateGroup.conversations.forEach((conv, convIndex) => {
+              content += `┌─ Conversation ${convIndex + 1} ─────────────────────────────\n`
+              content += `│ ID: ${conv.id}\n`
+              content += `│ Time: ${new Date(conv.created_at).toLocaleTimeString()}\n`
+              content += `│ Messages: ${conv.messages.length}\n`
+              content += `└─────────────────────────────────────────────────────────\n\n`
+
+              conv.messages.forEach((msg) => {
+                const role = msg.role === "assistant" ? "🤖 Assistant" : "👤 User"
+                content += `${role}:\n${msg.content}\n\n`
+              })
+
+              content += "─".repeat(80) + "\n\n"
+            })
+          })
+        }
+
+        const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "text/plain" })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = `${filename}.${format}`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      }
+    } catch (error) {
+      console.error("Error exporting all conversations:", error)
+      setError("Failed to export conversations")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -258,9 +371,56 @@ export default function ConversationsPage() {
         <ChatbotSidebar activeSection="conversations" />
         <div className="flex-1 overflow-auto">
           <div className="container mx-auto px-4 py-6 pb-12">
-            <h1 className="text-2xl font-bold mb-6" style={{ color: primaryColor }}>
-              Conversations
-            </h1>
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-2xl font-bold" style={{ color: primaryColor }}>
+                Conversations
+              </h1>
+              <div className="flex gap-2">
+                {/* Export current date dropdown */}
+                {conversationsForDate && conversationsForDate.conversations.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Export Date
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleExportCurrentDate("json")}>
+                        Export as JSON
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExportCurrentDate("csv")}>
+                        Export as CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExportCurrentDate("txt")}>
+                        Export as Text
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+
+                {/* Export all dates dropdown */}
+                {conversations.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Export All
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleExportAllDates("json")}>
+                        Export All as JSON
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExportAllDates("csv")}>
+                        Export All as CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExportAllDates("txt")}>
+                        Export All as Text
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-[calc(100vh-16rem)]">
               <div className="lg:h-[calc(100vh-16rem)] overflow-hidden">
                 {conversations.length > 0 ? (
