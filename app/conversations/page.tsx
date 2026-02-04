@@ -12,7 +12,7 @@ import ChatbotHeader from "@/app/components/chatbot-header"
 import ChatbotSidebar from "@/app/components/chatbot-sidebar"
 import { useChatbotTheme } from "@/app/contexts/chatbot-theme-context"
 import { cn } from "@/lib/utils"
-import { exportToJSON, exportToCSV, exportToTXT, exportAllConversationsToJSON } from "@/app/utils/conversation-export"
+import { exportToJSON, exportToCSV, exportToTXT, exportAllConversationsToJSON, exportAllConversationsToTXT } from "@/app/utils/conversation-export"
 
 // Updated Supabase client initialization
 const supabase = createClient(
@@ -262,11 +262,40 @@ export default function ConversationsPage() {
       }> = []
 
       for (const conv of conversations) {
-        const result = await fetchConversationsForDate(conv.date_of_convo)
-        if (conversationsForDate && conversationsForDate.date === conv.date_of_convo) {
+        // Fetch conversations for this date
+        let dateConversations = []
+        let hasMore = true
+        let page = 0
+        const pageSize = 1000
+
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from("testing_zaps2")
+            .select("id, messages, created_at")
+            .eq("chatbot_id", chatbotId)
+            .eq("date_of_convo", conv.date_of_convo)
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+            .order("created_at", { ascending: false })
+
+          if (error) throw error
+
+          if (data && data.length > 0) {
+            dateConversations = [...dateConversations, ...data]
+            hasMore = data.length === pageSize
+            page++
+          } else {
+            hasMore = false
+          }
+        }
+
+        if (dateConversations.length > 0) {
           allConvsByDate.push({
             date: conv.date_of_convo,
-            conversations: conversationsForDate.conversations,
+            conversations: dateConversations.map((c) => ({
+              id: c.id,
+              created_at: c.created_at,
+              messages: Array.isArray(c.messages) ? c.messages : [],
+            })),
           })
         }
       }
@@ -275,60 +304,31 @@ export default function ConversationsPage() {
 
       if (format === "json") {
         exportAllConversationsToJSON(allConvsByDate, chatbotName, `${filename}.json`)
+      } else if (format === "txt") {
+        exportAllConversationsToTXT(allConvsByDate, chatbotName, `${filename}.txt`)
       } else {
-        // For CSV and TXT, combine all dates
-        let content = ""
-        if (format === "csv") {
-          content = "Chatbot,Export Date,Total Dates\n"
-          content += `"${chatbotName}","${new Date().toISOString()}","${allConvsByDate.length}"\n\n`
-          content += "Date,Conversation ID,Timestamp,Message Role,Message Content\n"
+        // CSV format - combine all dates
+        let content = "Chatbot,Export Date,Total Dates\n"
+        content += `"${chatbotName}","${new Date().toISOString()}","${allConvsByDate.length}"\n\n`
+        content += "Date,Conversation ID,Timestamp,Message Role,Message Content\n"
 
-          allConvsByDate.forEach((dateGroup) => {
-            dateGroup.conversations.forEach((conv) => {
-              conv.messages.forEach((msg, index) => {
-                const conversationId = index === 0 ? conv.id : ""
-                const timestamp = index === 0 ? conv.created_at : ""
-                const date = index === 0 ? dateGroup.date : ""
-                const escapedContent = `"${msg.content.replace(/"/g, '""')}"` // Escape quotes for CSV
-                content += `"${date}","${conversationId}","${timestamp}","${msg.role}",${escapedContent}\n`
-              })
+        allConvsByDate.forEach((dateGroup) => {
+          dateGroup.conversations.forEach((conv) => {
+            conv.messages.forEach((msg, index) => {
+              const conversationId = index === 0 ? conv.id : ""
+              const timestamp = index === 0 ? conv.created_at : ""
+              const date = index === 0 ? dateGroup.date : ""
+              const escapedContent = `"${msg.content.replace(/"/g, '""')}"` // Escape quotes for CSV
+              content += `"${date}","${conversationId}","${timestamp}","${msg.role}",${escapedContent}\n`
             })
           })
-        } else {
-          // TXT format
-          content = "═".repeat(80) + "\n"
-          content += `ALL CONVERSATIONS EXPORT - ${chatbotName}\n`
-          content += `Export Date: ${new Date().toLocaleString()}\n`
-          content += `Total Dates: ${allConvsByDate.length}\n`
-          content += "═".repeat(80) + "\n\n"
+        })
 
-          allConvsByDate.forEach((dateGroup, dateIndex) => {
-            content += `╔═ Date ${dateIndex + 1}: ${new Date(dateGroup.date).toLocaleDateString()} ══════════════════════╗\n`
-            content += `║ Total Conversations: ${dateGroup.conversations.length}\n`
-            content += `╚═══════════════════════════════════════════════════════════════════╝\n\n`
-
-            dateGroup.conversations.forEach((conv, convIndex) => {
-              content += `┌─ Conversation ${convIndex + 1} ─────────────────────────────\n`
-              content += `│ ID: ${conv.id}\n`
-              content += `│ Time: ${new Date(conv.created_at).toLocaleTimeString()}\n`
-              content += `│ Messages: ${conv.messages.length}\n`
-              content += `└─────────────────────────────────────────────────────────\n\n`
-
-              conv.messages.forEach((msg) => {
-                const role = msg.role === "assistant" ? "🤖 Assistant" : "👤 User"
-                content += `${role}:\n${msg.content}\n\n`
-              })
-
-              content += "─".repeat(80) + "\n\n"
-            })
-          })
-        }
-
-        const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "text/plain" })
+        const blob = new Blob([content], { type: "text/csv" })
         const url = URL.createObjectURL(blob)
         const link = document.createElement("a")
         link.href = url
-        link.download = `${filename}.${format}`
+        link.download = `${filename}.csv`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)

@@ -64,40 +64,46 @@ export function exportToCSV(
 }
 
 /**
- * Export conversations to plain text format
+ * Export conversations to plain text format - formatted like chat display
  */
 export function exportToTXT(
   conversationData: ConversationData,
   chatbotName: string,
   filename?: string
 ): void {
-  let txtContent = "═".repeat(80) + "\n"
-  txtContent += `CONVERSATION EXPORT - ${chatbotName}\n`
-  txtContent += `Export Date: ${new Date().toLocaleString()}\n`
-  txtContent += `Conversation Date: ${new Date(conversationData.date).toLocaleDateString()}\n`
+  let txtContent = "═".repeat(100) + "\n"
+  txtContent += `${chatbotName.toUpperCase()} - CONVERSATION EXPORT\n`
+  txtContent += `Date: ${new Date(conversationData.date).toLocaleDateString()}\n`
+  txtContent += `Export Generated: ${new Date().toLocaleString()}\n`
   txtContent += `Total Conversations: ${conversationData.conversations.length}\n`
-  txtContent += "═".repeat(80) + "\n\n"
+  txtContent += "═".repeat(100) + "\n\n"
 
   conversationData.conversations.forEach((conv, convIndex) => {
-    txtContent += `┌─ Conversation ${convIndex + 1} ─────────────────────────────\n`
-    txtContent += `│ ID: ${conv.id}\n`
-    txtContent += `│ Time: ${new Date(conv.created_at).toLocaleTimeString()}\n`
-    txtContent += `│ Messages: ${conv.messages.length}\n`
-    txtContent += `└─────────────────────────────────────────────────────────\n\n`
+    txtContent += `\n${"─".repeat(100)}\n`
+    txtContent += `CONVERSATION ${convIndex + 1}\n`
+    txtContent += `Time: ${new Date(conv.created_at).toLocaleString()}\n`
+    txtContent += `${"─".repeat(100)}\n\n`
 
-    conv.messages.forEach((msg, msgIndex) => {
-      const role = msg.role === "assistant" ? "🤖 Assistant" : "👤 User"
-      txtContent += `${role}:\n${msg.content}\n\n`
+    conv.messages.forEach((msg) => {
+      if (msg.role === "assistant") {
+        txtContent += `${chatbotName}:\n`
+        txtContent += `${msg.content}\n\n`
+      } else {
+        txtContent += `You:\n`
+        txtContent += `${msg.content}\n\n`
+      }
     })
-
-    txtContent += "─".repeat(80) + "\n\n"
   })
+
+  txtContent += "\n" + "═".repeat(100) + "\n"
+  txtContent += `End of Export\n`
+  txtContent += "═".repeat(100) + "\n"
 
   downloadFile(txtContent, filename || `conversations-${conversationData.date}.txt`, "text/plain")
 }
 
 /**
- * Export all conversations (from all dates) to a single file
+ * Export all conversations (from all dates) to a single JSON file
  */
 export function exportAllConversationsToJSON(
   allConversationsByDate: Array<ConversationData>,
@@ -123,6 +129,52 @@ export function exportAllConversationsToJSON(
 
   const dataStr = JSON.stringify(exportData, null, 2)
   downloadFile(dataStr, filename || `all-conversations-${new Date().toISOString().split("T")[0]}.json`, "application/json")
+}
+
+/**
+ * Export all conversations to text format - formatted like chat display
+ */
+export function exportAllConversationsToTXT(
+  allConversationsByDate: Array<ConversationData>,
+  chatbotName: string,
+  filename?: string
+): void {
+  let txtContent = "═".repeat(100) + "\n"
+  txtContent += `${chatbotName.toUpperCase()} - COMPLETE CONVERSATION HISTORY\n`
+  txtContent += `Export Generated: ${new Date().toLocaleString()}\n`
+  txtContent += `Total Dates: ${allConversationsByDate.length}\n`
+  txtContent += `Total Conversations: ${allConversationsByDate.reduce((sum, cd) => sum + cd.conversations.length, 0)}\n`
+  txtContent += "═".repeat(100) + "\n\n"
+
+  allConversationsByDate.forEach((dateGroup, dateIndex) => {
+    txtContent += `\n${"▓".repeat(100)}\n`
+    txtContent += `DATE ${dateIndex + 1}: ${new Date(dateGroup.date).toLocaleDateString()}\n`
+    txtContent += `Conversations: ${dateGroup.conversations.length}\n`
+    txtContent += `${"▓".repeat(100)}\n\n`
+
+    dateGroup.conversations.forEach((conv, convIndex) => {
+      txtContent += `${"─".repeat(100)}\n`
+      txtContent += `CONVERSATION ${convIndex + 1}\n`
+      txtContent += `Time: ${new Date(conv.created_at).toLocaleString()}\n`
+      txtContent += `${"─".repeat(100)}\n\n`
+
+      conv.messages.forEach((msg) => {
+        if (msg.role === "assistant") {
+          txtContent += `${chatbotName}:\n`
+          txtContent += `${msg.content}\n\n`
+        } else {
+          txtContent += `You:\n`
+          txtContent += `${msg.content}\n\n`
+        }
+      })
+    })
+  })
+
+  txtContent += "\n" + "═".repeat(100) + "\n"
+  txtContent += `End of Complete History\n`
+  txtContent += "═".repeat(100) + "\n"
+
+  downloadFile(txtContent, filename || `all-conversations-${new Date().toISOString().split("T")[0]}.txt`, "text/plain")
 }
 
 /**
